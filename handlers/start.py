@@ -1,10 +1,11 @@
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message
+from aiogram.types import Message, File
 from aiogram import Bot, Dispatcher
 from aiogram.types import FSInputFile
 from keyboards.all_kb import main_kb
 import pytesseract
+import os
 
 start_router = Router()
 
@@ -13,9 +14,9 @@ async def cmd_start(message: Message):
     await message.answer('Запуск сообщения по команде /start используя фильтр CommandStart()',
                          reply_markup=main_kb(message.from_user.id))
 
-@start_router.message(F.photo)
-async def cmd_start_photo(message: Message):
-    await message.answer('Это фото!')
+# @start_router.message(F.photo)
+# async def cmd_start_photo(message: Message):
+#     await message.answer('Это фото!')
 
 @start_router.message(Command('images'))
 async def upload_photo(message: Message):
@@ -30,14 +31,44 @@ async def upload_photo(message: Message):
     )
     file_ids.append(result.photo[-1].file_id)
 
-@start_router.message (F.text == "📖 Печатный текст")
+@start_router.message(F.text == "Печатный текст")
 async def text_for_printed(message: Message):
-    try:
-        from PIL import Image
-    except ImportError:
-        await message.answer("Ошибка")
-    await message.answer(pytesseract.image_to_string('example.png'), lang='rus')
+    await message.answer("Пришлите фото для обработки в ответ на это сообщение")
+    
 # print(pytesseract.image_to_string(Image.open('example.png'), lang='rus'))
+
+@start_router.message(F.photo)
+async def process_photo(message: Message):
+    if "Пришлите фото для обработки в ответ на это сообщение" in message.reply_to_message.text:
+        try:
+            from PIL import Image
+
+            file_id = message.photo[-1].file_id
+
+            bot = message.bot
+            file: File = await bot.get_file(file_id)
+            file_path = file.file_path 
+            downloaded_file = await bot.download_file(file_path)
+
+            #Сохраняем файл во временное хранилище
+            local_file_path = "temp_photo.jpg"
+            with open(local_file_path, "wb") as f:
+                f.write(downloaded_file.getvalue())
+
+            # Открываем изображение и распознаем текст
+            image = Image.open(local_file_path)
+            text = pytesseract.image_to_string(image, lang='rus')
+
+            # Отправляем распознанный текст обратно в чат
+            await message.answer(text)
+
+            # Удаляем временный файл
+            os.remove(local_file_path)
+
+        except ImportError:
+            await message.answer("Ошибка: библиотека PIL не установлена.")
+        except Exception as e:
+            await message.answer(f"Произошла ошибка: {e}")
 
 @start_router.message(F.text)
 async def cmd_start_text(message: Message):
